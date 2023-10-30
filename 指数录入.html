@@ -6,6 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>抄表指数录入</title>
     <script src="./vue.min.js"></script>
+    <script src="./xlsx.mini.js"></script>
     <style>
       html,
       body,
@@ -153,14 +154,114 @@
       #app {
         display: flex;
         flex-direction: column;
+        padding: 10px 20px;
+        text-align: center;
+      }
+
+      #app > #title {
+        font-size: 32px;
+        font-weight: bold;
+        padding: 20px 0px;
+      }
+
+      #app > #excelFile {
+        display: none;
+      }
+
+      #app > #excelInput {
+        cursor: pointer;
+        /* color: #555666; */
+        color: whitesmoke;
+        line-height: 26px;
+        border-radius: 14px;
+        border: 1px solid #ccccd8;
+        background-color: #409eff;
+        padding: 4px 10px;
+      }
+      #app > #excelInput:hover {
+        background-color: #66b1ff;
+      }
+
+      #app > #userData {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: start;
+        padding: 15px 10px;
+      }
+
+      #app > #userLastIndex {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: start;
+        /* padding: 20px 0px; */
+        font-size: 20px;
+        padding: 0 10px;
+      }
+
+      #app > #userLastIndex > #userLastIndexNumber {
+        width: 100%;
+        text-align: center;
+        font-size: 30px;
+      }
+
+      #app > #userCurrentIndex {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: start;
+        /* padding: 20px 0px; */
+        font-size: 20px;
+        padding: 0 10px;
+      }
+
+      #app > #userCurrentIndex > input {
+        width: 80%;
+        margin: 2px auto;
+        font-size: 28px;
+        text-align: center;
+        border: 1px solid #ccccd8;
+        border-radius: 4px;
+      }
+      #app > #userCurrentIndex > input:focus {
+        outline: none;
+        border: 1px solid #409eff;
+      }
+
+      #app > #submitChange,
+      #app > #exportExcel {
+        cursor: pointer;
+        height: 36px;
+        line-height: 36px;
+        border-radius: 14px;
+        border: 1px solid #67c23aff;
+        background-color: #67c23aff;
+        color: #ffffff;
+        margin: 10px 0px;
+      }
+
+      #app > #exportExcel {
+        background-color: transparent;
+        color: #67c23a;
+        border: 1px solid #67c23a;
+      }
+
+      #app > #submitChange:disabled,
+      #app > #exportExcel:disabled {
+        /* color: #555666; */
+        /* color: whitesmoke; */
+        color: gray;
+        border: 1px solid #ccccd8;
+        background-color: transparent;
       }
     </style>
   </head>
   <body>
     <div id="app">
-      <div>指数录入</div>
+      <div id="title">指数录入</div>
 
-      <label for="excelFile">请选择指数录入模板:</label>
+      <label id="excelInput" for="excelFile">请选择录入模板</label>
 
       <input
         type="file"
@@ -169,9 +270,48 @@
         accept=".xlsx,.xls"
         required
         placeholder="请选择指数录入模板"
+        @change="openExcel"
       />
-      <input type="number" />
-      <button>生成excel</button>
+
+      <div id="userData">
+        <div>当前用户：</div>
+        <span v-for="(value, key) in userData" :key="key">
+          <span v-if="key !== 'currentIndex'">{{key}} :</span>
+          &nbsp;
+          <span v-if="key !== 'currentIndex'">{{ value }}</span>
+        </span>
+      </div>
+      <div id="userLastIndex">
+        <div>上期指数：</div>
+        <div id="userLastIndexNumber">{{ userData.指数 || 0 }}</div>
+      </div>
+      <div id="userCurrentIndex">
+        <div>本期指数：</div>
+        <input
+          id="userCurrentIndexInput"
+          type="number"
+          v-model="userCurrentIndex"
+        />
+      </div>
+      <button
+        @click="submitChange"
+        :disabled="isSubmitDisabled || isExcelDisabled"
+        id="submitChange"
+      >
+        <span style="color: red" v-if="isSubmitDisabled || isExcelDisabled"
+          >🚫</span
+        >
+        确认录入
+      </button>
+      <button @click="exportExcel" :disabled="isExcelDisabled" id="exportExcel">
+        <span style="color: red" v-if="isExcelDisabled">🚫</span>
+        生成excel
+      </button>
+
+      <div v-if="!isExcelDisabled">
+        <div>当前行:{{ currentLine}}</div>
+        <div>总共行数:{{ totelLine }}</div>
+      </div>
     </div>
   </body>
 
@@ -181,14 +321,157 @@
       data() {
         return {
           buttonName: "导入Excel",
+          // userData: {
+          //   抄表号: "F40722214",
+          //   计费号: "442667",
+          //   用户名称: "武红",
+          //   水表地址: "测试-101",
+          //   指数: 17,
+          // },
+          userData: {
+            抄表号: "",
+            计费号: "",
+            用户名称: "",
+            水表地址: "",
+            指数: 0,
+          },
+
+          userCurrentIndex: "",
+
+          // excel所有数据
+          excelData: [],
+
+          // 总共的行数
+          currentLine: 1,
+          totelLine: 0,
+          // 已经录入的行
+          totelSubmitLine: [],
+          isSubmitDisabled: true,
+          isExcelDisabled: true,
         };
+      },
+      mounted() {
+        console.log(this.isSubmitDisabled || this.isExcelDisabled);
       },
       methods: {
         openExcel() {
-          console.log(event);
+          // 获得文件对象
+          const file = document.getElementById("excelFile").files[0];
+          // console.log(file);
+          // 使用XLSX读取文件的每一行
+          const reader = new FileReader();
+          reader.onload = (e) => {
+            const data = new Uint8Array(e.target.result);
+            const workbook = XLSX.read(data, { type: "array" });
+            const sheetName = workbook.SheetNames[0];
+            const sheet = workbook.Sheets[sheetName];
+            const sheetData = XLSX.utils.sheet_to_json(sheet);
+            console.log(sheetData);
+            // 将第一行的数据赋值给userData
+            const firstRow = sheetData[0];
+            for (const key in firstRow) {
+              if (Object.hasOwnProperty.call(firstRow, key)) {
+                this.userData[key] = firstRow[key];
+              }
+            }
+            // 将excel所有数据赋值给excelData
+            this.excelData = sheetData;
+            // 计算总共的行数
+            this.totelLine = sheetData.length;
+          };
+          reader.readAsArrayBuffer(file);
+          // 聚焦到本期指数的输入框
+          this.$nextTick(() => {
+            document.getElementById("userCurrentIndexInput").focus();
+          });
+          this.isExcelDisabled = false;
+        },
+
+        submitChange() {
+          // 如果本期指数小于上期指数，提示用户
+          if (this.userCurrentIndex < this.userData.指数) {
+            alert("本期指数小于上期指数，请检查！");
+            return;
+          }
+          console.log(this.userCurrentIndex);
+          this.userData.currentIndex = Number(this.userCurrentIndex);
+          console.log(this.userData);
+          // 将excelData中的数据更新
+          const index = this.excelData.findIndex(
+            (item) => item.抄表号 === this.userData.抄表号
+          );
+          // 更新excelData中的当前指数
+          this.excelData[index].currentIndex = this.userCurrentIndex;
+
+          if (this.currentLine === this.totelLine) {
+            alert("录入成功，当前已经是最后一行");
+            return;
+          } else {
+            this.currentLine++;
+            this.nextUser();
+          }
+        },
+
+        nextUser() {
+          // 清空本期指数
+          this.userCurrentIndex = "";
+          // 找到下一个用户
+          const nextUserIndex = this.currentLine - 1;
+          // console.log(nextUserIndex);
+          // 将下一个用户的数据赋值给userData
+          const nextUserData = this.excelData[nextUserIndex];
+          for (const key in nextUserData) {
+            if (Object.hasOwnProperty.call(nextUserData, key)) {
+              this.userData[key] = nextUserData[key];
+            }
+          }
+          this.userCurrentIndex = "";
+          // 聚焦到本期指数的输入框
+          this.$nextTick(() => {
+            document.getElementById("userCurrentIndexInput").focus();
+          });
+        },
+
+        exportExcel() {
+          // 将excelData中的数据导出
+          // 如果每一行中没有currentIndex，就使用指数代替,如果有，就使用currentIndex代替指数
+          this.excelData.forEach((item) => {
+            if (item.currentIndex) {
+              item.指数 = Number(item.currentIndex);
+              delete item.currentIndex;
+            }
+            // 时间格式：2023-10
+            item.录入月份 = new Date().toISOString().slice(0, 7);
+          });
+          const sheet = XLSX.utils.json_to_sheet(this.excelData);
+          const workbook = XLSX.utils.book_new();
+          XLSX.utils.book_append_sheet(workbook, sheet, "Sheet1");
+          XLSX.writeFile(workbook, "水表数据.xlsx");
+        },
+      },
+
+      // 监听userData的变化，如果本期指数小于上期指数，不可用 deep: true
+      watch: {
+        userData: {
+          handler() {
+            if (this.userCurrentIndex < this.userData.指数) {
+              this.isSubmitDisabled = true;
+            } else {
+              this.isSubmitDisabled = false;
+            }
+          },
+          deep: true,
+          immediate: true,
+        },
+        // 监听本期指数的变化，如果本期指数小于上期指数，不可用，否则可用
+        userCurrentIndex() {
+          if (this.userCurrentIndex < this.userData.指数) {
+            this.isSubmitDisabled = true;
+          } else {
+            this.isSubmitDisabled = false;
+          }
         },
       },
     });
-    console.log(vm);
   </script>
 </html>
