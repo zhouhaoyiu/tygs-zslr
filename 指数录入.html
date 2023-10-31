@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
@@ -348,6 +348,8 @@
           totelSubmitLine: [],
           isSubmitDisabled: true,
           isExcelDisabled: true,
+          fileName: "",
+          sheetName: "",
         };
       },
       mounted() {
@@ -357,13 +359,16 @@
         openExcel() {
           // 获得文件对象
           const file = document.getElementById("excelFile").files[0];
-          // console.log(file);
+          console.log(file);
+          this.fileName = file.name;
           // 使用XLSX读取文件的每一行
           const reader = new FileReader();
           reader.onload = (e) => {
             const data = new Uint8Array(e.target.result);
             const workbook = XLSX.read(data, { type: "array" });
+            console.log(workbook);
             const sheetName = workbook.SheetNames[0];
+            this.sheetName = sheetName;
             const sheet = workbook.Sheets[sheetName];
             const sheetData = XLSX.utils.sheet_to_json(sheet);
             console.log(sheetData);
@@ -436,6 +441,10 @@
           // 将excelData中的数据导出
           // 如果每一行中没有currentIndex，就使用指数代替,如果有，就使用currentIndex代替指数
           this.excelData.forEach((item) => {
+            // 添加一列，例如现在是2023-10，表格原数据是2023-08，就加一列2023-08指数，值为修改之前的指数
+            if (item.录入月份) {
+              item[item.录入月份] = item.指数;
+            }
             if (item.currentIndex) {
               item.指数 = Number(item.currentIndex);
               delete item.currentIndex;
@@ -445,8 +454,11 @@
           });
           const sheet = XLSX.utils.json_to_sheet(this.excelData);
           const workbook = XLSX.utils.book_new();
-          XLSX.utils.book_append_sheet(workbook, sheet, "Sheet1");
-          XLSX.writeFile(workbook, "水表数据.xlsx");
+          XLSX.utils.book_append_sheet(workbook, sheet, this.sheetName);
+          XLSX.writeFile(
+            workbook,
+            new Date().toISOString().slice(0, 7) + " " + this.fileName
+          );
         },
       },
 
