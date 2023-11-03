@@ -25422,6 +25422,9 @@
       }
     </style>
     <style>
+      html {
+        background-color: rgb(275, 275, 275);
+      }
       #app {
         display: flex;
         flex-direction: column;
@@ -25560,7 +25563,7 @@
         id="abnormalRatio"
         style="display: flex; justify-content: center; align-items: center"
       >
-        <div style="">突增突减比例：</div>
+        <div>突增突减比例：</div>
         <input
           type="number"
           v-model="ratio"
@@ -25582,7 +25585,7 @@
       />
 
       <div id="userData">
-        <div>当前用户：</div>
+        <div style="font-weight: bold">当前用户：</div>
         <span v-for="(value, key) in userData" :key="key">
           <span
             v-if="key === '抄表号' || key === '计费号' || key === '用户名称' || key === '水表地址'"
@@ -25613,14 +25616,35 @@
           v-model="userCurrentIndex"
         />
       </div>
+
+      <div>
+        <!-- 备注 例修换表和拆表，可同时选择 -->
+        <div>备注：</div>
+        <div>
+          <input
+            type="checkbox"
+            id="remark1"
+            name="remark1"
+            value="例修换表"
+            v-model="remark.例修换表"
+          />
+          <label for="remark1">换表</label>
+          <input
+            type="checkbox"
+            id="remark2"
+            name="remark2"
+            value="拆表"
+            v-model="remark.拆表"
+          />
+          <label for="remark2">拆表</label>
+        </div>
+      </div>
       <button
         @click="submitChange"
-        :disabled="isSubmitDisabled || isExcelDisabled"
+        :disabled="isExcelDisabled"
         id="submitChange"
       >
-        <span style="color: red" v-if="isSubmitDisabled || isExcelDisabled"
-          >🚫</span
-        >
+        <span style="color: red" v-if="isExcelDisabled">🚫</span>
         确认录入
       </button>
       <button @click="exportExcel" :disabled="isExcelDisabled" id="exportExcel">
@@ -25649,11 +25673,17 @@
           //   指数: 17,
           // },
           userData: {
+            备注信息:"",
             抄表号: "",
             计费号: "",
             用户名称: "",
             水表地址: "",
             指数: 0,
+          },
+
+          remark: {
+            例修换表: false,
+            拆表: false,
           },
 
           displayKeys: ["抄表号", "计费号", "用户名称", "水表地址"],
@@ -25743,23 +25773,52 @@
         submitChange() {
           // 如果本期指数小于上期指数，提示用户
           if (this.userCurrentIndex < this.userData.指数) {
-            alert("本期指数小于上期指数，请检查！");
-            return;
+            // alert("本期指数小于上期指数，请检查！");
+            // 提示用户是否录入，如果点击确认，则将本期指数录入，如果点击取消，则不录入
+            const isSubmit = confirm(
+              "本期指数小于上期指数，请检查！是否录入？"
+            );
+            if (!isSubmit) {
+              return;
+            }
           }
           console.log(this.userCurrentIndex);
           this.userData.currentIndex = Number(this.userCurrentIndex);
-          console.log(this.userData);
           // 将excelData中的数据更新
           const index = this.excelData.findIndex(
             (item) => item.抄表号 === this.userData.抄表号
           );
           // 更新excelData中的当前指数
           this.excelData[index].currentIndex = this.userCurrentIndex;
+          // 如果remark都是false，如果原有有数据不修改，如果原有没有数据，就将备注信息修改为 “空”
+          if (!this.remark.例修换表 && !this.remark.拆表) {
+            if (this.excelData[index].备注信息 === "") {
+              this.excelData[index].备注信息 = "空";
+            }
+      
+          }
+          // 如果remark任意一个是true,就将备注修改
+          if (this.remark.例修换表 || this.remark.拆表) {
+            this.excelData[index].备注信息 = "";
+            // 并且加时间 如2023-11-11 例修换表
+            if (this.remark.例修换表) {
+              this.excelData[index].备注信息 += `${new Date().getFullYear()}-${
+                new Date().getMonth() + 1
+              }-${new Date().getDate()} 例修换表  `;
+            }
+            if (this.remark.拆表) {
+              this.excelData[index].备注信息 += `${new Date().getFullYear()}-${
+                new Date().getMonth() + 1
+              }-${new Date().getDate()} 拆表  `;
+            }
+          }
+
           // userData中指数减去最后一列是上期用量,当前录入的指数减去指数是本期用量，如果本期用量相比上期用量增幅超过30%，则提示用户水量突增，如果减幅超过30%，则提示用户水量突减
           const currentUsage = this.userData.currentIndex - this.userData.指数;
 
           const usageChange = currentUsage - this.lastUsage;
-          const usageChangePercent = (usageChange / this.lastUsage) * 100;
+          const usageChangePercent =
+            (usageChange / Math.abs(this.lastUsage)) * 100;
           console.log(usageChangePercent);
           if (usageChangePercent > this.ratio) {
             alert("水量突增");
@@ -25776,6 +25835,9 @@
         },
 
         nextUser() {
+          // 清空remark
+          this.remark.例修换表 = false;
+          this.remark.拆表 = false;
           // 清空本期指数
           this.userCurrentIndex = "";
           // 找到下一个用户
@@ -25793,14 +25855,13 @@
           this.$nextTick(() => {
             document.getElementById("userCurrentIndexInput").focus();
           });
-          // 拉起输入法（如果是手机端）
-          // 解决safari浏览器下，输入法不弹出的问题
         },
 
         exportExcel() {
           // 将excelData中的数据导出
           // 如果每一行中没有currentIndex，就使用指数代替,如果有，就使用currentIndex代替指数
           this.excelData.forEach((item) => {
+
             // 添加一列，例如现在是2023-10，表格原数据是2023-08，就加一列2023-08指数，值为修改之前的指数
             if (item.录入月份) {
               item[item.录入月份] = item.指数;
@@ -25843,14 +25904,15 @@
         userData: {
           handler() {
             if (this.userCurrentIndex < this.userData.指数) {
-              this.isSubmitDisabled = true;
+              this.isSubmitPrompt = true;
             } else {
-              this.isSubmitDisabled = false;
+              this.isSubmitPrompt = false;
             }
 
             const lastIndex = this.userData.指数;
             const currentIndex = this.userCurrentIndex;
             const userDataKey = Object.keys(this.userData);
+            console.log(userDataKey);
             let lastIndexKey = "";
             // 如果userDataKey中有currentIndex，那么值是length-2，否则是length-1
             if (userDataKey.includes("currentIndex")) {
