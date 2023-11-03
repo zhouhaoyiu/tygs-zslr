@@ -25427,7 +25427,7 @@
       #app > #title {
         font-size: 32px;
         font-weight: bold;
-        padding: 20px 0px;
+        padding-top: 20px;
       }
 
       #app > #excelFile {
@@ -25521,11 +25521,48 @@
         border: 1px solid #ccccd8;
         background-color: transparent;
       }
+
+      #app > #abnormalRatio {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        padding: 10px 0px;
+      }
     </style>
   </head>
   <body>
     <div id="app">
-      <div id="title">指数录入</div>
+      <div
+        id="title"
+        @click="()=>{detailDisplay = !detailDisplay;console.log(detailDisplay)}"
+      >
+        <span
+          style="
+            border: 1px solid;
+            border-radius: 14px;
+            padding: 4px 15px;
+            cursor: pointer;
+            text-align: center;
+          "
+          :style="detailDisplay?{borderColor:'#409eff',color:'#409eff'}:{borderColor:'#ccccd8ff',color:'#555666ff'}"
+        >
+          指数录入
+        </span>
+      </div>
+
+      <!-- 突增突减比例设置 -->
+      <div
+        id="abnormalRatio"
+        style="display: flex; justify-content: center; align-items: center"
+      >
+        <div style="">突增突减比例：</div>
+        <input
+          type="number"
+          v-model="ratio"
+          style="width: 60px; text-align: center"
+        />
+        <div style="margin-left: 10px">%</div>
+      </div>
 
       <label id="excelInput" for="excelFile">请选择录入模板</label>
 
@@ -25542,9 +25579,21 @@
       <div id="userData">
         <div>当前用户：</div>
         <span v-for="(value, key) in userData" :key="key">
-          <span v-if="key !== 'currentIndex'">{{key}} :</span>
-          &nbsp;
-          <span v-if="key !== 'currentIndex'">{{ value }}</span>
+          <span
+            v-if="key === '抄表号' || key === '计费号' || key === '用户名称' || key === '水表地址'"
+          >
+            {{ key }} : {{ value }}
+          </span>
+          <span v-else-if="detailDisplay">
+            <span v-if=" key !=='currentIndex'"> {{ key }} : {{ value }} </span>
+            <!-- <span v-if="key === '指数'">
+        
+            </span> -->
+          </span>
+        </span>
+        <!-- 上期用量 -->
+        <span>
+          <span v-if="detailDisplay">上期用量 : {{ lastUsage }}</span>
         </span>
       </div>
       <div id="userLastIndex">
@@ -25602,6 +25651,9 @@
             指数: 0,
           },
 
+          displayKeys: ["抄表号", "计费号", "用户名称", "水表地址"],
+          detailDisplay: false,
+
           userCurrentIndex: "",
 
           // excel所有数据
@@ -25616,6 +25668,9 @@
           isExcelDisabled: true,
           fileName: "",
           sheetName: "",
+          lastUsage: 0,
+
+          ratio: 30,
         };
       },
       mounted() {
@@ -25655,7 +25710,29 @@
           this.$nextTick(() => {
             document.getElementById("userCurrentIndexInput").focus();
           });
+
           this.isExcelDisabled = false;
+        },
+
+        // 判断是否是手机端
+        isMobile() {
+          const userAgentInfo = navigator.userAgent;
+          const Agents = [
+            "Android",
+            "iPhone",
+            "SymbianOS",
+            "Windows Phone",
+            "iPad",
+            "iPod",
+          ];
+          let flag = false;
+          for (let v = 0; v < Agents.length; v++) {
+            if (userAgentInfo.indexOf(Agents[v]) > 0) {
+              flag = true;
+              break;
+            }
+          }
+          return flag;
         },
 
         submitChange() {
@@ -25673,7 +25750,17 @@
           );
           // 更新excelData中的当前指数
           this.excelData[index].currentIndex = this.userCurrentIndex;
+          // userData中指数减去最后一列是上期用量,当前录入的指数减去指数是本期用量，如果本期用量相比上期用量增幅超过30%，则提示用户水量突增，如果减幅超过30%，则提示用户水量突减
+          const currentUsage = this.userData.currentIndex - this.userData.指数;
 
+          const usageChange = currentUsage - this.lastUsage;
+          const usageChangePercent = (usageChange / this.lastUsage) * 100;
+          console.log(usageChangePercent);
+          if (usageChangePercent > this.ratio) {
+            alert("水量突增");
+          } else if (usageChangePercent < -this.ratio) {
+            alert("水量突减");
+          }
           if (this.currentLine === this.totelLine) {
             alert("录入成功，当前已经是最后一行");
             return;
@@ -25701,6 +25788,8 @@
           this.$nextTick(() => {
             document.getElementById("userCurrentIndexInput").focus();
           });
+          // 拉起输入法（如果是手机端）
+          // 解决safari浏览器下，输入法不弹出的问题
         },
 
         exportExcel() {
@@ -25721,9 +25810,25 @@
           const sheet = XLSX.utils.json_to_sheet(this.excelData);
           const workbook = XLSX.utils.book_new();
           XLSX.utils.book_append_sheet(workbook, sheet, this.sheetName);
+          // 如果文件名为 2023-08 A小区1单元这种形式 那么将其中的2023-08替换为当前时间
+          const fileName = this.fileName;
+          const reg = /\d{4}-\d{2}/;
+          if (reg.test(fileName)) {
+            this.fileName = fileName.replace(
+              reg,
+              new Date().toISOString().slice(0, 7)
+            );
+          }
+          // 如果文件名为A小区1单元这种形式 那么在文件名前面加上当前时间
+          if (!reg.test(fileName)) {
+            this.fileName =
+              new Date().toISOString().slice(0, 7) + " " + fileName;
+          }
+
           XLSX.writeFile(
             workbook,
-            new Date().toISOString().slice(0, 7) + " " + this.fileName
+            this.fileName
+            // { bookType: "xlsx", bookSST: false, type: "array" }
           );
         },
       },
@@ -25737,6 +25842,22 @@
             } else {
               this.isSubmitDisabled = false;
             }
+
+            const lastIndex = this.userData.指数;
+            const currentIndex = this.userCurrentIndex;
+            const userDataKey = Object.keys(this.userData);
+            let lastIndexKey = "";
+            // 如果userDataKey中有currentIndex，那么值是length-2，否则是length-1
+            if (userDataKey.includes("currentIndex")) {
+              lastIndexKey = userDataKey[userDataKey.length - 2];
+            } else {
+              lastIndexKey = userDataKey[userDataKey.length - 1];
+            }
+            console.log(lastIndexKey);
+
+            const lastUsage = this.userData.指数 - this.userData[lastIndexKey];
+            this.lastUsage = lastUsage;
+            console.log(lastUsage);
           },
           deep: true,
           immediate: true,
