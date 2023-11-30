@@ -25727,8 +25727,31 @@
         },
         methods: {
           openExcel() {
+            // 如果取消选择文件，就不执行下面的代码
+            if (!document.getElementById("excelFile").files[0]) {
+              return;
+            }
             // 获得文件对象
             const file = document.getElementById("excelFile").files[0];
+            this.excelData = []
+
+            this.currentLine = 1
+            this.totelLine = 0
+
+            this.totelSubmitLine = []
+            this.isSubmitDisabled = true
+            this.isExcelDisabled = true
+            this.fileName = ""
+            this.sheetName = ""
+            this.lastUsage = 0
+            this.userData = {
+              备注信息: "",
+              抄表号: "",
+              计费号: "",
+              用户名称: "",
+              水表地址: "",
+              指数: 0,
+            },
             console.log(file);
             this.fileName = file.name;
             // 使用XLSX读取文件的每一行
@@ -25760,7 +25783,13 @@
               document.getElementById("userCurrentIndexInput").focus();
             });
 
-           
+            this.isExcelDisabled = false;
+            // 将数据重置
+            this.currentLine = 1;
+            this.totelSubmitLine = [];
+            this.userCurrentIndex = "";
+            this.remark.例修换表 = false;
+            this.remark.拆表 = false;
           },
 
           // 判断是否是手机端
