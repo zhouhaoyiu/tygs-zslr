@@ -1,0 +1,27 @@
+{
+  "name": "tygs-zslr",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "vite build",
+    "preview": "vite preview --host 127.0.0.1",
+    "test": "node --test tests/*.test.js"
+  },
+  "dependencies": {
+    "@lucide/vue": "1.55.0",
+    "fflate": "0.8.3",
+    "vue": "3.5.43",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "6.0.10",
+    "@xmldom/xmldom": "0.9.12",
+    "fake-indexeddb": "6.2.5",
+    "prettier": "3.9.10",
+    "vite": "8.3.4",
+    "vite-plugin-pwa": "2.0.0",
+    "workbox-window": "7.4.1"
+  }
+}
