@@ -141,7 +141,7 @@ input[type="radio"] {
   text-decoration: underline;
 }
 .app-shell {
-  height: 100dvh;
+  height: var(--app-height, 100dvh);
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -592,6 +592,9 @@ input[type="radio"] {
   overflow-y: auto;
   flex: 1;
   min-height: 0;
+}
+.entry-context {
+  display: none;
 }
 .person-heading {
   display: flex;
@@ -1206,7 +1209,16 @@ input[type="radio"] {
     padding: 9px 12px;
   }
 }
-@media (max-width: 760px) {
+@media (max-width: 760px), (max-width: 1024px) and (pointer: coarse) {
+  .app-shell {
+    position: fixed;
+    top: var(--app-top, 0px);
+    left: 0;
+    right: 0;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-left: env(safe-area-inset-left, 0px);
+    padding-right: env(safe-area-inset-right, 0px);
+  }
   .app-header {
     height: 58px;
     padding: 0 12px;
@@ -1385,7 +1397,82 @@ input[type="radio"] {
     font-size: 12px;
   }
   .detail-footer {
-    padding: 10px 17px;
+    padding: 10px 17px calc(10px + env(safe-area-inset-bottom, 0px));
+  }
+  .record-detail textarea {
+    font-size: 16px;
+  }
+  .compact-entry .app-header {
+    height: 40px;
+  }
+  .compact-entry .page-heading,
+  .compact-entry .backup-status,
+  .compact-entry .progress-band,
+  .compact-entry .notice,
+  .compact-entry .person-heading,
+  .compact-entry .identity,
+  .compact-entry .baseline {
+    display: none;
+  }
+  .compact-entry .detail-top {
+    height: 32px;
+  }
+  .compact-entry .entry-context {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 7px 17px;
+    border-bottom: 1px solid var(--line);
+  }
+  .entry-context > div {
+    min-width: 0;
+  }
+  .entry-context strong {
+    display: block;
+    font-size: 15px;
+  }
+  .entry-context span {
+    display: block;
+    margin-top: 3px;
+    font-size: 11px;
+    color: var(--muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .entry-context strong small {
+    margin-left: 7px;
+    font-size: 11px;
+    color: #976021;
+  }
+  .entry-baseline {
+    text-align: right;
+    flex-shrink: 0;
+  }
+  .entry-baseline small {
+    font-size: 10px;
+    color: var(--muted);
+  }
+  .compact-entry .detail-body {
+    padding: 12px 17px;
+    overscroll-behavior: contain;
+  }
+  .compact-entry .detail-footer {
+    padding: 6px 12px;
+  }
+  .compact-entry .detail-footer .primary {
+    min-height: 44px;
+  }
+  .short-entry .app-header {
+    display: none;
+  }
+  .short-entry .detail-top {
+    height: 28px;
+  }
+  .short-entry .entry-context {
+    padding-block: 4px;
   }
   .notice {
     padding: 9px 17px;
@@ -1406,9 +1493,12 @@ input[type="radio"] {
   }
   .modal-backdrop {
     padding: 14px;
+    top: var(--app-top, 0px);
+    bottom: auto;
+    height: var(--app-height, 100dvh);
   }
   .modal {
-    max-height: calc(100dvh - 28px);
+    max-height: calc(var(--app-height, 100dvh) - 28px);
   }
   .modal-body {
     padding: 18px;
@@ -1513,7 +1603,7 @@ input[type="radio"] {
 .filter-tabs button {
   min-width: 0;
 }
-@media (max-width: 760px) {
+@media (max-width: 760px), (max-width: 1024px) and (pointer: coarse) {
   .backup-status {
     padding: 0 16px 8px;
     font-size: 11px;

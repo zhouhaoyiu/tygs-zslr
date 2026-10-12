@@ -1,5 +1,5 @@
 <script setup>
-import { computed, nextTick, onMounted, ref } from "vue";
+import { computed, nextTick, onMounted, onUnmounted, ref } from "vue";
 import {
   AlertCircle,
   ArrowDownToLine,
@@ -45,6 +45,11 @@ import {
 import { BookStorage, openDatabase } from "./storage.js";
 import { vModal } from "./modal.js";
 import {
+  MOBILE_LAYOUT,
+  revealInScroller,
+  visibleViewport,
+} from "./viewport.js";
+import {
   offlineReady,
   offline,
   pwaError,
@@ -80,7 +85,26 @@ const showHistory = ref(false),
 const readingInput = ref(null),
   uploadInput = ref(null),
   backupInput = ref(null);
-const smallScreen = ref(matchMedia("(max-width: 760px)").matches);
+const mobileLayout = matchMedia(MOBILE_LAYOUT);
+const smallScreen = ref(mobileLayout.matches);
+const viewport = ref(visibleViewport(window));
+const composingReading = ref(false);
+const compactEntry = computed(
+  () =>
+    smallScreen.value &&
+    mobileDetail.value &&
+    !viewport.value.zoomed &&
+    viewport.value.height < 620,
+);
+const viewportStyle = computed(() =>
+  smallScreen.value && !viewport.value.zoomed
+    ? {
+        "--app-height": `${viewport.value.height}px`,
+        "--app-top": `${viewport.value.top}px`,
+      }
+    : {},
+);
+let viewportFrame = 0;
 const modalOpen = computed(
   () =>
     showImport.value ||
@@ -234,20 +258,56 @@ function editDraft(field, value) {
   notice.value = "";
   persist();
 }
+function revealActiveControl() {
+  if (modalOpen.value || sidebar.value) return;
+  const field = document.activeElement;
+  const scroller = field?.closest?.(".detail-body");
+  if (!scroller) return;
+  revealInScroller(
+    field.closest(".reading-field") || field,
+    scroller,
+    viewport.value,
+  );
+}
+function refreshViewport() {
+  cancelAnimationFrame(viewportFrame);
+  viewportFrame = requestAnimationFrame(async () => {
+    viewport.value = visibleViewport(window);
+    await nextTick();
+    revealActiveControl();
+  });
+}
+function focusReading() {
+  readingInput.value?.focus({ preventScroll: true });
+  nextTick(revealActiveControl);
+}
+function keepReadingFocus(event) {
+  if (event.button === 0 && document.activeElement === readingInput.value) {
+    event.preventDefault();
+  }
+}
+function readingKeydown(event) {
+  if (
+    event.key === "Enter" &&
+    (event.isComposing || event.keyCode === 229 || composingReading.value)
+  ) {
+    event.preventDefault();
+  }
+}
 async function selectRow(row) {
   book.value.activeRowId = row.id;
   loadDraft();
   mobileDetail.value = true;
   persist();
   await nextTick();
-  document.querySelector(".detail-body")?.scrollTo({ top: 0 });
-  readingInput.value?.focus({ preventScroll: true });
+  if (book.value.activeRowId === row.id) focusReading();
 }
 function adjacent(direction) {
   const next = book.value.rows[currentIndex.value + direction];
   if (next) selectRow(next);
 }
 async function saveReading(advance) {
+  if (composingReading.value) return;
   resetMessages();
   try {
     confirmReading(book.value, active.value.id, draft.value);
@@ -271,11 +331,11 @@ async function saveReading(advance) {
       loadDraft();
       notice.value = "修改已确认。";
     }
+    focusReading();
     persist();
     await saveChain;
     await nextTick();
-    if (advance) document.querySelector(".detail-body")?.scrollTo({ top: 0 });
-    readingInput.value?.focus({ preventScroll: true });
+    revealActiveControl();
   } catch (problem) {
     fieldError.value = problem.message;
     await revealError();
@@ -531,20 +591,29 @@ function changeRatio(event) {
   loadDraft();
   persist();
 }
+function layoutChanged(event) {
+  smallScreen.value = event.matches;
+  sidebar.value = false;
+  refreshViewport();
+}
+function closeSidebar(event) {
+  if (event.key === "Escape") sidebar.value = false;
+}
+function protectPendingSave(event) {
+  if (pendingSaves.value || saveError.value) {
+    event.preventDefault();
+    event.returnValue = "";
+  }
+}
 onMounted(async () => {
-  matchMedia("(max-width: 760px)").addEventListener("change", (event) => {
-    smallScreen.value = event.matches;
-    sidebar.value = false;
-  });
-  window.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") sidebar.value = false;
-  });
-  window.addEventListener("beforeunload", (event) => {
-    if (pendingSaves.value || saveError.value) {
-      event.preventDefault();
-      event.returnValue = "";
-    }
-  });
+  mobileLayout.addEventListener("change", layoutChanged);
+  window.addEventListener("keydown", closeSidebar);
+  window.addEventListener("beforeunload", protectPendingSave);
+  window.addEventListener("resize", refreshViewport);
+  window.visualViewport?.addEventListener("resize", refreshViewport);
+  window.visualViewport?.addEventListener("scroll", refreshViewport);
+  document.addEventListener("focusin", refreshViewport);
+  refreshViewport();
   try {
     storage = new BookStorage(await openDatabase());
     books.value = await storage.list();
@@ -555,10 +624,27 @@ onMounted(async () => {
     ready.value = true;
   }
 });
+onUnmounted(() => {
+  cancelAnimationFrame(viewportFrame);
+  mobileLayout.removeEventListener("change", layoutChanged);
+  window.removeEventListener("keydown", closeSidebar);
+  window.removeEventListener("beforeunload", protectPendingSave);
+  window.removeEventListener("resize", refreshViewport);
+  window.visualViewport?.removeEventListener("resize", refreshViewport);
+  window.visualViewport?.removeEventListener("scroll", refreshViewport);
+  document.removeEventListener("focusin", refreshViewport);
+});
 </script>
 
 <template>
-  <div class="app-shell">
+  <div
+    class="app-shell"
+    :class="{
+      'compact-entry': compactEntry,
+      'short-entry': compactEntry && viewport.height < 360,
+    }"
+    :style="viewportStyle"
+  >
     <header class="app-header" :inert="modalOpen">
       <button
         class="icon-button mobile-menu"
@@ -884,6 +970,22 @@ onMounted(async () => {
                 <History :size="18" />
               </button>
             </div>
+            <div class="entry-context" aria-label="当前录入用户">
+              <div>
+                <strong
+                  >{{ active.name || active.meter
+                  }}<small v-if="active.duplicate">重号</small></strong
+                >
+                <span
+                  :title="`${active.meter} · ${active.address || '未填写地址'}`"
+                  >{{ active.meter }} ·
+                  {{ active.address || "未填写地址" }}</span
+                >
+              </div>
+              <div class="entry-baseline">
+                <small>上期指数</small><strong>{{ active.baseline }}</strong>
+              </div>
+            </div>
             <div class="detail-body">
               <div class="person-heading">
                 <div>
@@ -939,10 +1041,15 @@ onMounted(async () => {
                     ref="readingInput"
                     :value="draft.value"
                     inputmode="decimal"
+                    enterkeyhint="next"
+                    :spellcheck="false"
                     maxlength="40"
                     autocomplete="off"
                     placeholder="输入读数"
                     :aria-invalid="!!fieldError"
+                    @keydown="readingKeydown"
+                    @compositionstart="composingReading = true"
+                    @compositionend="composingReading = false"
                     @input="editDraft('value', $event.target.value)"
                   /><span>m³</span>
                 </div>
@@ -1014,6 +1121,7 @@ onMounted(async () => {
                     class="button"
                     type="button"
                     :disabled="!!saveError"
+                    @pointerdown="keepReadingFocus"
                     @click="saveReading(false)"
                   >
                     <Check :size="17" />保存修改
@@ -1076,6 +1184,7 @@ onMounted(async () => {
               <button
                 class="button"
                 :disabled="currentIndex === 0"
+                @pointerdown="keepReadingFocus"
                 @click="adjacent(-1)"
               >
                 <ArrowLeft :size="16" />上一户
@@ -1085,6 +1194,7 @@ onMounted(async () => {
                 type="submit"
                 form="reading-form"
                 :disabled="!!saveError"
+                @pointerdown="keepReadingFocus"
               >
                 <CheckCheck :size="17" />确认并下一户
               </button>
@@ -1093,6 +1203,7 @@ onMounted(async () => {
                 title="下一户"
                 aria-label="下一户"
                 :disabled="currentIndex === stats.total - 1"
+                @pointerdown="keepReadingFocus"
                 @click="adjacent(1)"
               >
                 <ArrowRight :size="18" />
