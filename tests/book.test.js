@@ -319,10 +319,10 @@ test("invalid or non-forward period is rejected", async () => {
   await assert.rejects(createBook(candidate, "抄表册", "2026-09"), /晚于/);
   await assert.rejects(createBook(candidate, "抄表册", "2026-13"), /有效/);
 });
-test("repository sample workbooks still import, including cached formula readings", () => {
+test("repository samples import with integer readings and text meter IDs", () => {
   for (const filename of [
-    "2023-08 A小区1单元.xlsx",
-    "2023-10 A小区1单元示例.xlsx",
+    "2026-08 A小区1单元.xlsx",
+    "2026-10 A小区1单元示例.xlsx",
     "A小区1单元.xlsx",
     "TEST.xlsx",
     "水表数据.xlsx",
@@ -331,10 +331,16 @@ test("repository sample workbooks still import, including cached formula reading
       readFileSync(new URL(`../${filename}`, import.meta.url)),
       filename,
     );
-    assert.ok(
-      result.sheets.some((sheet) => !sheet.error && sheet.count === 30),
-      filename,
-    );
+    assert.equal(result.sheets.length, filename === "TEST.xlsx" ? 9 : 1);
+    for (const sheet of result.sheets) {
+      assert.equal(sheet.error, "", `${filename}: ${sheet.name}`);
+      assert.equal(sheet.count, sheet.name === "Sheet1" ? 30 : 6);
+      const parsed = parseSheet(result.workbook.Sheets[sheet.name], sheet.name);
+      assert.equal(parsed.rows[0].meter, "000001");
+      assert.equal(parsed.rows[0].baseline, 0);
+      assert.ok(parsed.rows.every((row) => Number.isInteger(row.baseline)));
+      assert.ok(parsed.rows.every((row) => row.name.startsWith("示例用户")));
+    }
   }
 });
 
